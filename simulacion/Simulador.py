@@ -1,9 +1,9 @@
-import simpy
 import random
-from .gestor_memoria import GestorMemoria
-from .procesador import Procesador
+from simulacion.GestorMemoria import GestorMemoria
+from simulacion.Procesador import Procesador
 
-class Simulador:
+
+class Simulador:  # Cambiado de "simulador" a "Simulador"
     def __init__(self, env, num_procesos, capacidad_memoria, num_nucleos):
         """Inicializa la simulación con memoria y procesador."""
         self.env = env
