@@ -2,9 +2,12 @@ import random
 from simulacion.GestorMemoria import GestorMemoria
 from simulacion.Procesador import Procesador
 
+# Establecer la semilla para la generación de números aleatorios
+RANDOM_SEED = 42
+random.seed(RANDOM_SEED)
 
 class Simulador:
-    def __init__(self, env, num_procesos, capacidad_memoria, num_nucleos):
+    def __init__(self, env, num_procesos, capacidad_memoria=200, num_nucleos=1, instrucciones_por_ciclo=3):
         """Inicializa la simulación con memoria y procesador."""
         self.env = env
         self.memoria = GestorMemoria(env, capacidad_memoria)
@@ -12,6 +15,7 @@ class Simulador:
         self.num_procesos = num_procesos
         self.capacidad_memoria = capacidad_memoria
         self.num_nucleos = num_nucleos
+        self.instrucciones_por_ciclo = instrucciones_por_ciclo
         
         # Estadísticas
         self.tiempos_inicio = {}
@@ -22,7 +26,7 @@ class Simulador:
         self.tiempo_inicio_global = 0
         self.tiempo_fin_global = 0
 
-    def proceso(self, id_proceso, tiempo_uso, memoria_requerida):
+    def proceso(self, id_proceso, instrucciones, memoria_requerida):
         """Simula la ejecución de un proceso."""
         self.tiempos_inicio[id_proceso] = self.env.now
         
@@ -31,36 +35,41 @@ class Simulador:
         self.memoria_utilizada.append(memoria_requerida)
 
         print(f'[{self.env.now}] Proceso {id_proceso} obtuvo memoria y espera CPU.')
-        inicio_espera_cpu = self.env.now
-        
-        with self.procesador.cpu.request() as req:
-            yield req
-            tiempo_espera_cpu = self.env.now - inicio_espera_cpu
-            print(f'[{self.env.now}] Proceso {id_proceso} ejecutándose...')
-            
-            # Registrar uso de CPU
-            self.cpu_utilizada.append(1)  # Un núcleo está ocupado
-            
-            yield self.env.timeout(tiempo_uso)
-            
-            # Registrar tiempo en CPU
-            self.tiempos_cpu[id_proceso] = tiempo_uso
+        while instrucciones > 0:
+            with self.procesador.cpu.request() as req:
+                yield req
+                print(f'[{self.env.now}] Proceso {id_proceso} ejecutándose...')
+                
+                # Ejecutar hasta instrucciones_por_ciclo instrucciones
+                instrucciones_a_ejecutar = min(instrucciones, self.instrucciones_por_ciclo)
+                yield self.env.timeout(instrucciones_a_ejecutar)
+                instrucciones -= instrucciones_a_ejecutar
+                
+                # Registrar uso de CPU
+                self.cpu_utilizada.append(instrucciones_a_ejecutar)
+                self.tiempos_cpu[id_proceso] = self.tiempos_cpu.get(id_proceso, 0) + instrucciones_a_ejecutar
 
-        print(f'[{self.env.now}] Proceso {id_proceso} finalizado, liberando memoria.')
-        yield self.memoria.liberar_memoria(memoria_requerida)
-        
-        # Registrar finalización
-        self.tiempos_fin[id_proceso] = self.env.now
-        self.tiempo_fin_global = self.env.now
+                if instrucciones == 0:
+                    print(f'[{self.env.now}] Proceso {id_proceso} finalizado, liberando memoria.')
+                    yield self.memoria.liberar_memoria(memoria_requerida)
+                    self.tiempos_fin[id_proceso] = self.env.now
+                    self.tiempo_fin_global = self.env.now
+                    break
+                else:
+                    decision = random.randint(1, 21)
+                    if decision == 1:
+                        print(f'[{self.env.now}] Proceso {id_proceso} esperando I/O.')
+                        yield self.env.timeout(random.randint(1, 5))  # Simula tiempo de I/O
+                    print(f'[{self.env.now}] Proceso {id_proceso} vuelve a ready.')
 
     def correr(self):
         """Crea y ejecuta los procesos en el entorno de simulación."""
         self.tiempo_inicio_global = self.env.now
         
         for i in range(self.num_procesos):
-            tiempo_uso = random.expovariate(1.0 / 10)
+            instrucciones = random.randint(1, 10)
             memoria_requerida = random.randint(1, 10)
-            self.env.process(self.proceso(i, tiempo_uso, memoria_requerida))
+            self.env.process(self.proceso(i, instrucciones, memoria_requerida))
         
         self.env.run()
         
